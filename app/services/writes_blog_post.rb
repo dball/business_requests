@@ -1,18 +1,19 @@
 require 'active_support/core_ext/object/blank'
+require_relative 'transaction'
+require_relative 'state_error'
 
+# Writes blog posts
 class WritesBlogPost
-  def initialize
-    $blog ||= []
-    $transactions ||= []
-  end
-
   def call(params)
     title = params.fetch(:title) { '' }
     body = params.fetch(:body) { '' }
     unless title.present?
       raise ArgumentError, "Title must be present"
     end
-    post = BlogPost.new(title, body)
+    if $blog.detect { |post| post.fetch(:title) == title }
+      raise ArgumentError, "Title must be unique"
+    end
+    post = { title: title, body: body }
     $blog << post
     transaction = Transaction.new(post)
     $transactions << transaction
@@ -21,23 +22,13 @@ class WritesBlogPost
 
   def undo(transaction)
     performed = $transactions.delete(transaction)
-    raise ArgumentError unless performed
+    unless performed
+      raise ArgumentError, "Transaction has never been performed"
+    end
     deleted = $blog.delete(performed.args.first)
-    raise StateError unless deleted
+    unless deleted
+      raise StateError, "Blog post was already deleted"
+    end
     transaction
   end
-
-  class BlogPost < Struct.new(:title, :body)
-  end
-
-  class Transaction
-    attr_reader :args
-
-    def initialize(*args)
-      @args = args
-    end
-  end
-end
-
-class StateError < StandardError
 end
